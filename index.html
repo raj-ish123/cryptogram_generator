@@ -41,9 +41,12 @@
       padding: 10px;
       border: 1px solid #ddd;
       border-radius: 4px;
-      white-space: pre;
       font-family: monospace;
       overflow-x: auto;
+      white-space: pre;
+    }
+    pre {
+      margin: 0;
     }
   </style>
 </head>
@@ -53,16 +56,24 @@
   <h1>Cryptogram Generator</h1>
   <input type="text" id="inputString" placeholder="Enter your phrase..." />
   <button onclick="generateCryptogram()">Generate</button>
+  <button onclick="copyToClipboard('cryptogram')">📋 Copy Number Cryptogram</button>
+  <button onclick="copyToClipboard('letterCryptogram')">📋 Copy Letter Cryptogram</button>
 
   <div class="output">
-    <h3>Cryptogram:</h3>
+    <h3>Cryptogram (Number Mapping):</h3>
     <div id="cryptogram" class="cryptogram"></div>
 
     <h3>Answer Key:</h3>
     <div id="answerKey" class="answer"></div>
 
-    <h3>Key:</h3>
+    <h3>Key (Letter → Number):</h3>
     <div id="key" class="key"></div>
+
+    <h3>Cryptogram (Letter-to-Letter Mapping):</h3>
+    <div id="letterCryptogram" class="cryptogram"></div>
+
+    <h3>Letter-to-Letter Key:</h3>
+    <div id="letterMap" class="key"></div>
   </div>
 </div>
 
@@ -72,96 +83,105 @@ function generateCryptogram() {
   const output = document.getElementById("cryptogram");
   const keyOutput = document.getElementById("key");
   const answerOutput = document.getElementById("answerKey");
+  const letterCryptogramOutput = document.getElementById("letterCryptogram");
+  const letterMapOutput = document.getElementById("letterMap");
 
   if (!input) return alert("Please enter a phrase.");
 
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const usedLetters = Array.from(new Set(input.replace(/[^A-Z]/g, '').split('')));
-  let singleDigitPool = Array.from({ length: 9 }, (_, i) => i + 1);
-  let doubleDigitPool = Array.from({ length: 17 }, (_, i) => i + 10);
+  const usedLetters = alphabet.split('');
 
+  // Unique number mapping
+  let numbers = Array.from({ length: 26 }, (_, i) => i + 1).sort(() => Math.random() - 0.5);
   const letterMap = {};
-  const numberMap = {}; // reverse lookup to ensure consistency
+  usedLetters.forEach((letter, i) => {
+    letterMap[letter] = numbers[i];
+  });
 
-  const shuffledLetters = [...usedLetters].sort(() => Math.random() - 0.5);
+  // Unique letter-to-letter mapping
+  const shuffledAlphabet = alphabet.split('').sort(() => Math.random() - 0.5);
+  const globalLetterMap = {};
+  const availableTargets = [...shuffledAlphabet];
+  for (let letter of usedLetters) {
+    let target;
+    do {
+      target = availableTargets.pop();
+    } while (target === letter || Object.values(globalLetterMap).includes(target));
+    globalLetterMap[letter] = target;
+  }
 
-  // Assign numbers to each used letter
-  for (let i = 0; i < shuffledLetters.length; i++) {
-    const letter = shuffledLetters[i];
-    let number;
-    if (singleDigitPool.length && (i % 2 === 0 || doubleDigitPool.length < 3)) {
-      number = singleDigitPool.splice(Math.floor(Math.random() * singleDigitPool.length), 1)[0];
+  // Keep all characters in one continuous line
+  const cleanInput = input.replace(/[^A-Z\s]/g, '');
+  
+  // Generate number cryptogram in one line
+  let topLine = '';
+  let bottomLine = '';
+  
+  for (let char of cleanInput) {
+    if (char === ' ') {
+      topLine += '    '; // 4 spaces for space
+      bottomLine += '    '; // 4 spaces for space
     } else {
-      number = doubleDigitPool.splice(Math.floor(Math.random() * doubleDigitPool.length), 1)[0];
-    }
-    letterMap[letter] = number;
-    numberMap[number] = letter;
-  }
-
-  // Ensure no word has 3+ consecutive double-digit numbers
-  function adjustDoubleDigitSequence(word) {
-    const letters = word.split('');
-    let count = 0;
-
-    for (let i = 0; i < letters.length; i++) {
-      const currentNum = letterMap[letters[i]];
-      const isDouble = currentNum >= 10;
-
-      if (isDouble) {
-        count++;
-        if (count >= 3) {
-          // Find a single-digit letter not used in this word
-          const replacementLetter = usedLetters.find(l =>
-            letterMap[l] < 10 && !letters.includes(l)
-          );
-
-          if (replacementLetter) {
-            // Swap the two letters' numbers
-            const tempNum = letterMap[letters[i]];
-            letterMap[letters[i]] = letterMap[replacementLetter];
-            letterMap[replacementLetter] = tempNum;
-
-            // Restart validation after swap
-            return adjustDoubleDigitSequence(word);
-          }
-        }
-      } else {
-        count = 0;
-      }
+      topLine += char.padStart(4, ' ');
+      bottomLine += String(letterMap[char]).padStart(4, ' ');
     }
   }
+  
+  output.innerHTML = `<pre>${topLine}\n${bottomLine}</pre>`;
 
-  const words = input.split(/\s+/);
-  const topWords = [], bottomWords = [], answerLines = [];
-
-  for (let word of words) {
-    const clean = word.replace(/[^A-Z]/g, '');
-    adjustDoubleDigitSequence(clean);
-    let topLine = '', bottomLine = '', answerLine = '';
-
-    for (let char of clean) {
-      const num = letterMap[char];
-      const paddedChar = char.padStart(2, ' ').padEnd(3, ' ');
-      const paddedNum = String(num).padStart(2, ' ').padEnd(3, ' ');
-      topLine += paddedChar;
-      bottomLine += paddedNum;
-      answerLine += char;
+  // Generate letter-to-letter cryptogram in one line
+  let letterTopLine = '';
+  let letterBottomLine = '';
+  
+  for (let char of cleanInput) {
+    if (char === ' ') {
+      letterTopLine += '    '; // 4 spaces for space
+      letterBottomLine += '    '; // 4 spaces for space
+    } else {
+      letterTopLine += char.padStart(4, ' ');
+      letterBottomLine += globalLetterMap[char].padStart(4, ' ');
     }
-
-    topWords.push(topLine.trimEnd());
-    bottomWords.push(bottomLine.trimEnd());
-    answerLines.push(`${answerLine} - ${clean.split('').map(c => letterMap[c]).join(' ')}`);
   }
+  
+  letterCryptogramOutput.innerHTML = `<pre>${letterTopLine}\n${letterBottomLine}</pre>`;
 
-  output.textContent = topWords.join('   ') + '\n' + bottomWords.join('   ');
-  answerOutput.textContent = answerLines.join('\n');
+  // Answer Key
+  const uniqueLetters = Array.from(new Set(input.replace(/[^A-Z]/g, '').split('')));
+  const answerKeySingles = uniqueLetters.map(l => `${l} → ${letterMap[l]}`);
+  
+  // Single line answer for the whole phrase
+  const phraseAnswer = cleanInput.split('').map(c => c === ' ' ? ' ' : letterMap[c]).join(' ');
+  const fullAnswer = `${cleanInput} → ${phraseAnswer}`;
+  
+  answerOutput.textContent = [...answerKeySingles, fullAnswer].join('\n');
 
-  let keyText = '';
-  for (let letter of alphabet) {
-    keyText += `${letter} -> ${letterMap[letter] !== undefined ? letterMap[letter] : ''}\n`;
-  }
-  keyOutput.textContent = keyText.trim();
+  // Letter-to-letter key
+  const letterKeySingles = uniqueLetters.map(l => `${l} → ${globalLetterMap[l]}`);
+  
+  // Single line answer for letter mapping
+  const letterPhraseAnswer = cleanInput.split('').map(c => c === ' ' ? ' ' : globalLetterMap[c]).join(' ');
+  const fullLetterAnswer = `${cleanInput} → ${letterPhraseAnswer}`;
+  
+  letterMapOutput.textContent = [...letterKeySingles, fullLetterAnswer].join('\n');
+
+  // Full A–Z key
+  keyOutput.textContent = alphabet.split('').map(l => `${l} → ${letterMap[l]}`).join('\n');
+}
+
+function copyToClipboard(id) {
+  const element = document.getElementById(id);
+  const pre = element.querySelector('pre');
+  const text = pre ? pre.innerText : element.innerText;
+
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      alert(`Copied ${id.includes("letter") ? 'Letter' : 'Number'} Cryptogram to clipboard!`);
+    })
+    .catch(err => {
+      alert('Failed to copy text: ' + err);
+    });
 }
 </script>
+
 </body>
 </html>
